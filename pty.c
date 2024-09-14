@@ -23,7 +23,6 @@
 
 void sigpipe(int signum)
 {
-	//printf("ignore epipe!\n");
 }
 
 char username[64] = {0};
@@ -83,7 +82,6 @@ struct instance *link_client(int fd)
 	data = (unsigned char *)malloc(data_len);
 	memset(data, '\0', data_len);
 	len = read(fd, data, data_len);
-	//printf("data:%s\n", data);
 	j = cJSON_Parse(data);
 	if (j == NULL) {
 		shutdown(fd, SHUT_RDWR);
@@ -93,7 +91,6 @@ struct instance *link_client(int fd)
 		if (instances[i].in_use == false) {
 			instances[i].in_use = true;
 			ins = &instances[i];
-			//printf("instance: %d\n", i);
 			break;
 		}
 	}
@@ -102,11 +99,9 @@ struct instance *link_client(int fd)
 	}
 	ins->fd = fd;
 	if (strcmp(cJSON_GetObjectItem(j, "clientmode")->valuestring, "slave") == 0) {
-		//printf("is slave\n");
 		ins->is_slave = true;
 		strcpy(ins->username, cJSON_GetObjectItem(j, "username")->valuestring);
 	} else if (strcmp(cJSON_GetObjectItem(j, "clientmode")->valuestring, "master") == 0) {
-		//printf("is master\n");
 		ins->is_slave = false;
 		strcpy(ins->username, cJSON_GetObjectItem(j, "username")->valuestring);
 	}
@@ -117,7 +112,6 @@ struct instance *link_client(int fd)
 			break;
 		}
 	}
-	//printf("link done\n");
 out:
 	cJSON_Delete(j);
 out_data:
@@ -135,27 +129,22 @@ void *client_thread(void *f)
 
 	pthread_detach(pthread_self());
 	free(f);
-	//printf("client fd: %d\n", fd);
 	ins = link_client(fd);
 	if (is_slave(ins)) {
 wait_master:
 		while (ins->peer == NULL) {
 			sleep(1);
 		}
-		//printf("slave find master\n");
 		while ((len = read(ins->fd, &c, 1)) != EOF) {
 			if (len <= 0) {
-				//printf("close slave socket\n");
 				shutdown(ins->peer->fd, SHUT_RDWR);
 				close(ins->peer->fd);
 				ins->peer = NULL;
 				memset(ins->username, '\0', 32);
 				ins->in_use = false;
-				//printf("close slave socket done\n");
 				break;
 			}
 			if (ins->peer == NULL) {
-				//printf("slave lost master\n");
 				goto wait_master;
 			}
 			len = write(ins->peer->fd, &c, 1);
@@ -164,23 +153,15 @@ wait_master:
 		if (ins == NULL) {
 			goto out;
 		}
-		//while (ins->peer == NULL) {
-		//	sleep(1);
-		//}
 		if (ins->peer == NULL) {
 			ins->in_use = false;
-			//printf("master not find slave\n");
 			goto out;
 		}
-		//printf("master find slave\n");
 		while ((len = read(ins->fd, &c, 1)) != EOF) {
 			if (len <= 0) {
-				//printf("close master socket\n");
-				//ins->peer->peer = NULL;
 				ins->peer = NULL;
 				memset(ins->username, '\0', 32);
 				ins->in_use = false;
-				//printf("close master socket done\n");
 				break;
 			}
 			len = write(ins->peer->fd, &c, 1);
@@ -195,16 +176,11 @@ void *slave_input_thread(void *fd)
 	char c;
 	int len;
 	struct multi_fd mfd = *(struct multi_fd *)fd;
-	//pthread_detach(pthread_self());
-	//while ((len = read(0, &c, 1)) != EOF) {
 	while ((len = read(mfd.sockfd, &c, 1)) != EOF) {
-		//usleep(1000);
-		//printf("read from server: %c\n", c);
 		if (len <= 0) {
 			break;
 		}
 		len = write(mfd.ptmfd, &c, 1);
-		//printf("read from server: %c [%d]done\n", c, len);
 	}
 }
 
@@ -213,16 +189,11 @@ void *slave_output_thread(void *fd)
 	char c;
 	int len;
 	struct multi_fd mfd = *(struct multi_fd *)fd;
-	//pthread_detach(pthread_self());
 	while ((len = read(mfd.ptmfd, &c, 1)) != EOF) {
-		//len = write(1, &c, 1);
-		//usleep(1000);
-		//printf("write to server: %c\n", c);
 		len = write(mfd.sockfd, &c, 1);
 		if (len <= 0) {
 			break;
 		}
-		//printf("write to server: %c [%d]done\n", c, len);
 	}
 }
 
@@ -240,13 +211,10 @@ int start_slave(int sockfd)
 	cJSON *j;
 
 	//f_out = open("temp", O_RDWR);
-	//fd_m = open("/dev/ptmx", O_RDWR | O_NOCTTY | O_NONBLOCK);
 	fd_m = open("/dev/ptmx", O_RDWR | O_NOCTTY);
 	retval = grantpt(fd_m);
 	retval = unlockpt(fd_m);
 	pts_name = (const char *)ptsname(fd_m);
-	//printf("pts_name: %s\n", pts_name);
-	//fd_s = open(pts_name, O_RDWR | O_NOCTTY | O_NONBLOCK);
 	fd_s = open(pts_name, O_RDWR | O_NOCTTY);
 	j = cJSON_CreateObject();
 	cJSON_AddStringToObject(j, "clientmode", "slave");
@@ -256,7 +224,6 @@ int start_slave(int sockfd)
 	h.data_len = strlen(d);
 	write(sockfd, &h, sizeof(struct header));
 	len = write(sockfd, d, strlen(d));
-	//printf("send %d bytes\n", len);
 	free(d);
 	if (len != h.data_len) {
 		printf("start slave error\n");
@@ -265,7 +232,7 @@ int start_slave(int sockfd)
 	fpid = fork();
 	if (fpid == 0) {
 		char *pargv[] = {"/bin/bash", NULL};
-		//char *penvp[] = {"TERM=xterm-256color", NULL};
+		char *penvp[] = {"TERM=vt100", NULL};
 		struct termios ori_settings, new_settings;
 		tcgetattr(fd_s, &ori_settings);
 		new_settings = ori_settings;
@@ -279,8 +246,7 @@ int start_slave(int sockfd)
 		dup2(fd_s, 0);
 		dup2(fd_s, 1);
 		dup2(fd_s, 2);
-		//execve("/bin/bash", pargv, penvp);
-		execve("/bin/bash", pargv, NULL);
+		execve("/bin/bash", pargv, penvp);
 	} else {
 		char c;
 		pthread_t i_thread, o_thread;
@@ -300,17 +266,12 @@ int start_slave(int sockfd)
 		retval = pthread_create(&i_thread, NULL, slave_input_thread, &mfd);
 		retval = pthread_create(&o_thread, NULL, slave_output_thread, &mfd);
 		wait(&status);
-		//printf("parent exit child\n");
 		shutdown(sockfd, SHUT_RDWR);
 		close(sockfd);
 		close(fd_s);
 		close(fd_m);
 		pthread_join(i_thread, NULL);
-		//printf("parent exit i_thread\n");
 		pthread_join(o_thread, NULL);
-		//printf("parent exit o_thread\n");
-		//tcsetattr(0, TCSANOW, &ori_settings);
-		//tcsetattr(1, TCSANOW, &ori_settings);
 		return 0;
 	}
 out:
@@ -326,7 +287,6 @@ void *master_input_thread(void *fd)
 	int len;
 	struct multi_fd mfd = *(struct multi_fd *)fd;
 	struct termios ori_settings, new_settings;
-	//pthread_detach(pthread_self());
 	tcgetattr(0, &ori_settings);
 	new_settings = ori_settings;
 	new_settings.c_iflag |= IGNPAR;
@@ -339,12 +299,10 @@ void *master_input_thread(void *fd)
 	while ((len = read(0, &c, 1)) != EOF) {
 		len = write(mfd.sockfd, &c, 1);
 		if (len <= 0) {
-			//printf("\ndisconnect i_thread!\n");
 			break;
 		}
 	}
 	tcsetattr(0, TCSANOW, &ori_settings);
-	//tcsetattr(1, TCSANOW, &ori_settings);
 }
 
 void *master_output_thread(void *fd)
@@ -352,17 +310,6 @@ void *master_output_thread(void *fd)
 	char c;
 	int len;
 	struct multi_fd mfd = *(struct multi_fd *)fd;
-	//struct termios ori_settings, new_settings;
-	//pthread_detach(pthread_self());
-	/*tcgetattr(1, &ori_settings);
-	new_settings = ori_settings;
-	new_settings.c_iflag |= IGNPAR;
-	new_settings.c_iflag &= ~(ISTRIP | INLCR | IGNCR | ICRNL | IXON | IXANY | IXOFF);
-	new_settings.c_lflag &= ~(ISIG | ICANON | ECHO | ECHOE | ECHOK | ECHONL);
-	new_settings.c_oflag &= ~OPOST;
-	new_settings.c_cc[VMIN] = 1;
-	new_settings.c_cc[VTIME] = 0;
-	tcsetattr(1, TCSANOW, &new_settings);*/
 	while ((len = read(mfd.sockfd, &c, 1)) != EOF) {
 		if (len <= 0) {
 			printf("\ndisconnect o_thread!\n");
@@ -370,7 +317,6 @@ void *master_output_thread(void *fd)
 		}
 		len = write(1, &c, 1);
 	}
-	//tcsetattr(1, TCSANOW, &ori_settings);
 }
 
 int start_master(int sockfd)
@@ -502,18 +448,14 @@ int main(int argc, char *argv[])
 		server_len = sizeof(server_address);
 		retval = setsockopt(server_sockfd, SOL_SOCKET, SO_REUSEPORT, (char *)&opt_val, sizeof(opt_val));
 		retval = bind(server_sockfd, (struct sockaddr *)&server_address, server_len);
-		//printf("bind: %d, server_sockfd=%d\n", retval, server_sockfd);
 		retval = listen(server_sockfd, 5);
-		//printf("listen: %d\n", retval);
 		client_len = sizeof(client_address);
 		while ((client_sockfd = accept(server_sockfd, (struct sockaddr *)&client_address, (socklen_t *)&client_len)) != -1) {
 			int *f;
 			f = (int *)malloc(sizeof(int));
 			*f = client_sockfd;
-			//printf("event comming...\n");
 			retval = pthread_create(&c_thread, NULL, client_thread, f);
 		}
-		//printf("accept error fd=%d, error=%s\n", client_sockfd, strerror(errno));
 	} else {
 		int retval;
 		int server_sockfd;
@@ -528,20 +470,15 @@ int main(int argc, char *argv[])
 		server_address.sin_port = htons(8080);
 		server_len = sizeof(server_address);
 		retval = connect(server_sockfd, (struct sockaddr *)&server_address, server_len);
-		//printf("connect to server, retval=%d\n", retval);
 		if (strcmp(clientmode, "slave") == 0) {
 			while (1) {
 				retval = start_slave(server_sockfd);
-				//printf("relink\n");
-				//shutdown(server_sockfd, SHUT_RDWR);
-				//close(server_sockfd);
 				server_sockfd = socket(AF_INET, SOCK_STREAM, 0);
 				server_address.sin_family = AF_INET;
 				server_address.sin_addr.s_addr = inet_addr(address);
 				server_address.sin_port = htons(8080);
 				server_len = sizeof(server_address);
 				retval = connect(server_sockfd, (struct sockaddr *)&server_address, server_len);
-				//printf("connect server: %d\n", retval);
 			}
 		} else if (strcmp(clientmode, "master") == 0) {
 			retval = start_master(server_sockfd);
